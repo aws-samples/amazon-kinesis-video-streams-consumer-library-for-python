@@ -47,6 +47,8 @@ python3 kvs_consumer_library_example.py
 ```
 
 This assumes default client authentication and so your host machine must have a valid AWS credentials file or receive temporary credentials by other means. 
+User IAM or temporary credentials must have AmazonKinesisVideoStreamsReadOnlyAccess or some per stream specific equivalent of these permissions. 
+
 Assuming authenticating is successful then the consumer library will be reading in the nominated KVS stream and returning parsed MKV fragments to the on_fragment_arrived() callback where a series of post-processing of the fragment and enclosed frames is completed.
 
 Check the on_fragment_arrived function and see the post processing features. The save MKV and save frames functions are commented out so you don't fill up too much disk but easy to uncomment to test these features as well.
