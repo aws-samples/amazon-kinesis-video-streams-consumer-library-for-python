@@ -20,13 +20,13 @@ A complete example of how to consume the Amazon Kinesis Video Stream Consumer Li
 [kvs_consumer_library_example](kvs_consumer_library_example.py) module.
 
 ### To deploy this example:
-1. Make sure you have an active stream running in KVS. The example takes fragments off the live streaming edge of the stream so if 
-none are being received the consumer will gracefully exit. If you prefer to parse previous stored streams, you will need to update the 
+1. Make sure you have an active stream running in KVS. The example takes fragments off the live edge of the stream so if 
+none are being received the consumer will gracefully exit. If you prefer to parse previous stored fragments, you will need to update the 
 StartSelector used in the kvs_consumer_library_example.
 
 2. Clone and CD into this repository
 ```
-git clone [Enter REPO]
+git clone https://github.com/aws-samples/amazon-kinesis-video-streams-consumer-library-for-python.git
 cd amazon-kinesis-video-streams-consumer-library-for-python
 ```
 
@@ -52,7 +52,7 @@ Check the on_fragment_arrived function and see the post processing features. The
 
 ## Summary Workflow
 
-1) Define a on_fragment_arrived() and on_read_stream_complete()n and on_stream_read_exception() call-backs in user application logic.
+1) Define a on_fragment_arrived() and on_read_stream_complete() and on_stream_read_exception() call-backs in user application logic.
 2) Initialize the KVS Media and / or Archive Media clients,
 3) Make a call to KVS Media GetMedia and / or KVS Archive Media GetMediaForFragmentList for the given stream,
 4) Initialize and run this KVS Consumer library thread providing the response from the GetMedia
