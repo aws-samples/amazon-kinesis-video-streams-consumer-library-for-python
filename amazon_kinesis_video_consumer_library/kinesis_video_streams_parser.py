@@ -41,16 +41,14 @@ __status__ = "Development"
 __copyright__ = "Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved."
 __author__ = "Dean Colcott <https://www.linkedin.com/in/deancolcott/>"
 
-import io
-import time
 import timeit
 import logging
-import imageio.v3 as iio
 from threading import Thread
 from amazon_kinesis_video_consumer_library.ebmlite import loadSchema
 
 # Init the logger.
 log = logging.getLogger(__name__)
+
 
 class KvsConsumerLibrary(Thread):
 
@@ -66,6 +64,9 @@ class KvsConsumerLibrary(Thread):
         # Call the Thread class's init function
         Thread.__init__(self)
 
+        # Used to trigger graceful exit of this thread
+        self._stop_get_media = False
+
         # Init the local vars. 
         log.info('Initilizing KvsConsumerLibrary...')
         self.stream_name = stream_name
@@ -77,7 +78,6 @@ class KvsConsumerLibrary(Thread):
         log.info('Loading EBMLlite MKV Schema....')
         self.schema = loadSchema('matroska.xml')
     
-
     def _get_ebml_header_elements(self, fragement_dom):
         '''
         Returns the EBML Header elements in the Fragment DOM. EBML Header elements indicate the start 
@@ -125,6 +125,9 @@ class KvsConsumerLibrary(Thread):
 
         return simple_block_elements
 
+    def stop_thread(self):
+        self._stop_get_media = True
+
     ####################################################
     # Read and parse streaming media from a Kinesis Video Stream
     def run(self):
@@ -157,6 +160,9 @@ class KvsConsumerLibrary(Thread):
             
             # Uses the StreamingBody object iterator to read in (default 1024 byte) chunks from the streaming buffer.
             for chunk in kvs_streaming_buffer:
+
+                if self._stop_get_media:
+                    break
 
                 # Append chunk bytes to ByteArray buffer while waiting for the entire MKV fragment to arrive.
                 chunk_buffer.extend(chunk)

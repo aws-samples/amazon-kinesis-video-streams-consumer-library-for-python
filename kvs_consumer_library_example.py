@@ -28,6 +28,7 @@ logging.basicConfig(format="[%(name)s.%(funcName)s():%(lineno)d] - [%(levelname)
 REGION='[ENTER_REGION]'
 KVS_STREAM01_NAME = '[ENTER_KVS_STREAM_NAME]'   # Stream must be in specified region
 
+
 class KvsPythonConsumerExample:
     '''
     Example class to demonstrate usage the AWS Kinesis Video Streams KVS) Consumer Library for Python.
@@ -105,6 +106,10 @@ class KvsPythonConsumerExample:
             #Add Main process / application logic here while KvsConsumerLibrary instance runs as a thread
             log.info("Nothn to see, just doin main application stuff in a loop here!")
             time.sleep(5)
+            
+            # Call below to exit the streaming get_media() thread gracefully before reaching end of stream. 
+            #my_stream01_consumer.stop_thread()
+
 
     ####################################################
     # KVS Consumer Library call-backs
@@ -187,7 +192,7 @@ class KvsPythonConsumerExample:
             save_dir = 'ENTER_DIRECTORY_PATH_TO_SAVE_FRAGEMENTS'
             frag_file_name = self.last_good_fragment_tags['AWS_KINESISVIDEO_FRAGMENT_NUMBER'] + '.mkv' # Update as needed
             frag_file_path = os.path.join(save_dir, frag_file_name)
-            # Uncomment below to enable this function - will take a significant amount of disk space if left running:
+            # Uncomment below to enable this function - will take a significant amount of disk space if left running unchecked:
             #log.info('')
             #log.info(f'####### Saving fragment to local disk at: {frag_file_path}')
             #self.kvs_fragment_processor.save_fragment_as_local_mkv(fragment_bytes, frag_file_path)
@@ -219,7 +224,7 @@ class KvsPythonConsumerExample:
             jpg_file_base_name = self.last_good_fragment_tags['AWS_KINESISVIDEO_FRAGMENT_NUMBER']
             jpg_file_base_path = os.path.join(save_dir, jpg_file_base_name)
             
-            # Uncomment below to enable this function - will take a significant amount of disk space if left running:
+            # Uncomment below to enable this function - will take a significant amount of disk space if left running unchecked:
             #log.info('')
             #log.info(f'####### Saving 1 in {one_in_frames_ratio} Frames from fragment as JPEG to base path: {jpg_file_base_path}')
             #jpeg_paths = self.kvs_fragment_processor.save_frames_as_jpeg(fragment_bytes, one_in_frames_ratio, jpg_file_base_path)
