@@ -232,6 +232,22 @@ class KvsPythonConsumerExample:
             #    jpeg_path = jpeg_paths[i]
             #    print(f'Saved JPEG-{i} Path: {jpeg_path}')
 
+            
+            ###########################################
+            # 6) Save Amazon Connect Frames from Fragment to local disk as WAVs
+            ###########################################
+            save_dir = 'ENTER_DIRECTORY_PATH_TO_SAVE_WAV_FRAMES'
+            wav_file_base_name = self.last_good_fragment_tags['AWS_KINESISVIDEO_FRAGMENT_NUMBER']
+            wav_file_base_path = os.path.join(save_dir, wav_file_base_name)
+            
+            # Uncomment below to enable this function - will take a significant amount of disk space if left running unchecked:
+            #log.info('')
+            #log.info(f'####### Saving audio track "AUDIO_FROM_CUSTOMER" from Amazon Connect fragment as WAV to base path: {wav_file_base_path}')
+            #self.kvs_fragment_processor.save_connect_fragment_audio_track_from_customer_as_wav(fragment_dom, wav_file_base_path)
+            #log.info(f'####### Saving audio track "AUDIO_TO_CUSTOMER" from Amazon Connect fragment as WAV to base path: {wav_file_base_path}')
+            #self.kvs_fragment_processor.save_connect_fragment_audio_track_to_customer_as_wav(fragment_dom, wav_file_base_path)
+
+
         except Exception as err:
             log.error(f'on_fragment_arrived Error: {err}')
     

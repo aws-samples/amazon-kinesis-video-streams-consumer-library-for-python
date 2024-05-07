@@ -18,6 +18,7 @@ import io
 import logging
 import imageio.v3 as iio
 import amazon_kinesis_video_consumer_library.ebmlite.util as emblite_utils
+import wave
 
 # Init the logger.
 log = logging.getLogger(__name__)
@@ -134,11 +135,11 @@ class KvsFragementProcessor():
 
         ### Parameters:
 
-        fragment_bytes: bytearray
-            A ByteArray with raw bytes from exactly one fragment.
+            fragment_bytes: bytearray
+                A ByteArray with raw bytes from exactly one fragment.
 
-        one_in_frames_ratio: Str
-            Ratio of the available frames in the fragment to process and return.
+            one_in_frames_ratio: Str
+                Ratio of the available frames in the fragment to process and return.
 
         ### Return:
 
@@ -193,4 +194,162 @@ class KvsFragementProcessor():
             jpeg_paths.append(image_file_path)
         
         return jpeg_paths
+    
 
+    def get_raw_audio_track_from_simple_block(self, mkv_element):
+        '''
+        This function gets the raw audio track from a SimpleBlock element
+        in a Matroska file from Amazon Connect.
+
+        ### Parameters:        
+            mkv_element: ebmlite.core.Document <ebmlite.core.MatroskaDocument>
+                    The DOM like structure describing the fragment parsed by EBMLite.
+
+        ### Return:
+            A bytearray containing the raw audio data of the specified track        
+        '''
+
+        if mkv_element.name == "SimpleBlock":
+            mkv_element.stream.seek(mkv_element.payloadOffset+4)
+            return mkv_element.parse(mkv_element.stream, mkv_element.size-4)
+        return None
+
+
+    def get_track_bytearray(self, mkv_dom, track_nr):
+        '''
+        This function extracts the raw audio track from a Matroska
+        file from Amazon Connect and returns it as a bytearray. It iterates through
+        the SimpleBlock elements within each Cluster, alternating which
+        track it appends based on the track number.
+
+        ### Parameters:        
+            mkv_dom: ebmlite.core.Document <ebmlite.core.MatroskaDocument>
+                    The DOM like structure describing the fragment parsed by EBMLite.
+
+            track_nr: The track number (1 or 2) to extract
+
+        ### Return:
+            A bytearray containing the raw audio data of the specified track
+
+        '''
+
+        track_bytearray = bytearray()
+
+        for element in mkv_dom:
+            for segment_child in element:
+                if segment_child.name == "Cluster":
+                    i=0
+                    for cluster_child in segment_child:
+                        if cluster_child.name == "SimpleBlock":
+                            i+=1
+                            if track_nr == 1:
+                                if i % 2 != 0:
+                                    track_bytearray.extend(self.get_raw_audio_track_from_simple_block(cluster_child))
+                            elif track_nr == 2:
+                                if i % 2 == 0:
+                                    track_bytearray.extend(self.get_raw_audio_track_from_simple_block(cluster_child))
+        return track_bytearray
+
+    def get_track_number_by_name(self, fragment_dom, track_name):
+        '''
+        This function gets the track number from a Amazon Connect Matroska fragment  
+        by track name.
+        
+        ### Parameters:
+            fragment_dom: ebmlite.core.Document <ebmlite.core.MatroskaDocument>
+                The DOM like structure describing the fragment parsed by EBMLite. 
+
+            track_name (str): The name of the track to lookup.
+            
+        ### Returns:
+            int: The track number (as an integer), or None if not found.
+        '''
+        for element in fragment_dom:
+
+            for segment_child in element:
+
+                if segment_child.name == "Tracks":
+                    for cluster_child in segment_child:
+                        fragment_dom_track_name = ''
+                        fragment_dom_track_number = 0
+                        if cluster_child.name == "TrackEntry":
+                            for te_child in cluster_child:
+                                if te_child.name == "Name":
+                                    fragment_dom_track_name = te_child.value
+                                if te_child.name == "TrackNumber":
+                                    fragment_dom_track_number = te_child.value
+                        if fragment_dom_track_name == track_name:
+                            return fragment_dom_track_number
+        return None
+
+    def convert_track_to_wav(self, track_bytearray):
+        '''
+        This function converts a track bytearray to a wav file.
+        '''
+
+        file_wav = io.BytesIO()
+        with wave.open(file_wav, 'wb') as f:
+            f.setnchannels(1)
+            f.setframerate(8000)
+            f.setsampwidth(2)
+            f.writeframes(track_bytearray)
+        return file_wav
+    
+    def save_connect_fragment_audio_track_as_wav(self, fragment_dom, track_nr, file_name_path):
+        '''
+        Save the provided fragment_dom as wav file on local disk.
+
+        ### Parameters:
+
+            fragment_dom: ebmlite.core.Document <ebmlite.core.MatroskaDocument>
+                The DOM like structure describing the fragment parsed by EBMLite.
+
+            tranck_nr: int
+                The track number (1 or 2) to extract
+
+        file_name_path: Str
+            Local file path / name to save the MKV file to.
+
+        '''
+
+        fragment_bytes = self.get_track_bytearray(fragment_dom, track_nr)
+        fragment_wav = self.convert_track_to_wav(fragment_bytes)
+        with open(file_name_path, 'wb') as f:
+            f.write(fragment_wav.getvalue())
+    
+    def save_connect_fragment_audio_track_from_customer_as_wav(self, fragment_dom, file_name_path_part):
+        '''
+        Saves the audio track from the customer in a Amazon Connect Matroska fragment
+        as a WAV file.
+        
+        ### Parameters:
+            
+            fragment_dom: ebmlite.core.Document <ebmlite.core.MatroskaDocument>
+                The DOM like structure describing the fragment parsed by EBMLite.
+
+            file_name_path_part (str): The file path to save the WAV file to
+
+        '''
+
+        track_number =  self.get_track_number_by_name(fragment_dom, "AUDIO_FROM_CUSTOMER")
+        if track_number:
+            file_name_path = file_name_path_part + "-AUDIO_FROM_CUSTOMER.wav"
+            self.save_connect_fragment_audio_track_as_wav(fragment_dom, track_number, file_name_path)
+
+    def save_connect_fragment_audio_track_to_customer_as_wav(self, fragment_dom, file_name_path_part):
+        '''
+        Saves the audio track to the customer in a Amazon Connect Matroska fragment 
+        as a WAV file.
+        
+        ### Parameters:
+            
+            fragment_dom: ebmlite.core.Document <ebmlite.core.MatroskaDocument>
+                The DOM like structure describing the fragment parsed by EBMLite.
+
+            file_name_path_part (str): The file path to save the WAV file to
+
+        '''
+        track_number =  self.get_track_number_by_name(fragment_dom, "AUDIO_TO_CUSTOMER")
+        if track_number:
+            file_name_path = file_name_path_part + "-AUDIO_TO_CUSTOMER.wav"
+            self.save_connect_fragment_audio_track_as_wav(fragment_dom, track_number, file_name_path)
