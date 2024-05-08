@@ -13,7 +13,7 @@ In addition, the KvsFragementProcessor class provides the following functions fo
 2) save_fragment_as_local_mkv(): Saves the fragment as stand-alone MKV file on local disk.
 3) get_frames_as_ndarray(): Returns a selectable ratio of frames in the fragment as a list of NDArray objects.
 4) save_frames_as_jpeg(): Returns a selectable ratio of frames in the fragment as a JPEGs to local disk.
-5) save_connect_fragment_audio_track_from_customer_as_wav() save_connect_fragment_audio_track_to_customer_as_wav(): Returns a WAV files with AUDIO_FROM_CUSTOMER and AUDIO_TO_CUSTOMER from frames produced by [Amazon Connect](https://docs.aws.amazon.com/connect/latest/adminguide/customer-voice-streams.html).
+5) save_connect_fragment_audio_track_from_customer_as_wav(), save_connect_fragment_audio_track_to_customer_as_wav(): Returns a WAV files with AUDIO_FROM_CUSTOMER and AUDIO_TO_CUSTOMER from frames produced by [Amazon Connect](https://docs.aws.amazon.com/connect/latest/adminguide/customer-voice-streams.html).
 
 
 ## Getting started
