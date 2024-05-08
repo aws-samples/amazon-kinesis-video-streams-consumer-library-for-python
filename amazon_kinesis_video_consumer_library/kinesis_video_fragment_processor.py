@@ -19,6 +19,7 @@ import logging
 import imageio.v3 as iio
 import amazon_kinesis_video_consumer_library.ebmlite.util as emblite_utils
 import wave
+import amazon_kinesis_video_consumer_library.ebmlite.decoding as ebmlite_decoding
 
 # Init the logger.
 log = logging.getLogger(__name__)
@@ -201,6 +202,11 @@ class KvsFragementProcessor():
         This function gets the raw audio track from a SimpleBlock element
         in a Matroska file from Amazon Connect.
 
+        It will remove SimpleBlock header as per: 
+        https://github.com/ietf-wg-cellar/matroska-specification/blob/master/notes.md
+
+        Will works only if track number VINT is one octet length.
+
         ### Parameters:        
             mkv_element: ebmlite.core.Document <ebmlite.core.MatroskaDocument>
                     The DOM like structure describing the fragment parsed by EBMLite.
@@ -212,6 +218,35 @@ class KvsFragementProcessor():
         if mkv_element.name == "SimpleBlock":
             mkv_element.stream.seek(mkv_element.payloadOffset+4)
             return mkv_element.parse(mkv_element.stream, mkv_element.size-4)
+        return None
+    
+    def get_audio_track_number_from_simple_block(self, mkv_element):
+        '''
+        This function gets the number of audio track from a SimpleBlock element
+        in a Matroska file from Amazon Connect.
+
+        Will works only if track number VINT is one octet length as per:
+        https://github.com/ietf-wg-cellar/matroska-specification/blob/master/notes.md
+
+        ### Parameters:        
+            mkv_element: ebmlite.core.Document <ebmlite.core.MatroskaDocument>
+                    The DOM like structure describing the fragment parsed by EBMLite.
+
+        ### Return:
+            number of audio track in SimpleBlock     
+        '''
+
+        if mkv_element.name == "SimpleBlock":
+            mkv_element.stream.seek(mkv_element.payloadOffset)
+            ch = mkv_element.stream.read(1)
+            length, _ = ebmlite_decoding.decodeIntLength(ord(ch))
+            if length == 1:
+                '''
+                removing VINT_MARKER as per https://datatracker.ietf.org/doc/rfc8794/ paragraph 4
+                '''
+                track_nr =  ord(ch) & 127
+
+            return track_nr                    
         return None
 
 
@@ -241,13 +276,11 @@ class KvsFragementProcessor():
                     i=0
                     for cluster_child in segment_child:
                         if cluster_child.name == "SimpleBlock":
+                            simple_block_track_nr =self.get_audio_track_number_from_simple_block(cluster_child)
                             i+=1
-                            if track_nr == 1:
-                                if i % 2 != 0:
-                                    track_bytearray.extend(self.get_raw_audio_track_from_simple_block(cluster_child))
-                            elif track_nr == 2:
-                                if i % 2 == 0:
-                                    track_bytearray.extend(self.get_raw_audio_track_from_simple_block(cluster_child))
+                            if track_nr == simple_block_track_nr:
+                                track_bytearray.extend(self.get_raw_audio_track_from_simple_block(cluster_child))
+
         return track_bytearray
 
     def get_track_number_by_name(self, fragment_dom, track_name):
