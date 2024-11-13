@@ -85,9 +85,7 @@ This library is licensed under the MIT-0 License. See the LICENSE file.
 
 ## Credits:
 
-[EMBLite by MideTechnology](https://github.com/MideTechnology/ebmlite) is an external EBML parser used to decode the MKV fragents in this library.
-For convenance, a slightly modified version of EMBLite is shipped with the KvsConsumerLibrary but adding credit where its due.  
-EMBLite MIT License: https://github.com/MideTechnology/ebmlite/blob/development/LICENSE  
+[EMBLite by MideTechnology](https://github.com/MideTechnology/ebmlite) is an external EBML parser used to decode the MKV fragents in this library. 
 
 
 
