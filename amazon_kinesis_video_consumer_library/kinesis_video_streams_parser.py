@@ -132,23 +132,24 @@ class KvsConsumerLibrary(Thread):
     # Read and parse streaming media from a Kinesis Video Stream
     def run(self):
         '''
-        Reads in chunks (unframed number of raw bytes) from a KVS GetMedia or GetMediaForFragmentList Streaming Body response 
-        and parses into bounded MKV fragments. Raw data is buffered until a complete fragment is received which is then forwarded to the 
-        on_fragmemt_arrived callback. Fragment is delivered as a raw byte array and also a parsed EBMLite Document that is a DOM like 
-        structure of the elements (including Tags) within the given Fragment. 
+        Reads in chunks (unframed number of raw bytes) from a KVS GetMedia or GetMediaForFragmentList Streaming Body response
+        and parses into bounded MKV fragments. Raw data is buffered until a complete fragment is received which is then forwarded to the
+        on_fragmemt_arrived callback. Fragment is delivered as a raw byte array and also a parsed EBMLite Document that is a DOM like
+        structure of the elements (including Tags) within the given Fragment.
 
         Kinesis Video will continually update the streaming buffer with media as soon as its available. For StartSelectorType = NOW,
-        bytes from the media stream will be available as fast as they arrive into Kinesis Video by the producer. In this case the 
-        consumer bandwidth and fragment rate will be equal to that of the producer. However, if StartSelector is set to sometime 
-        in the past then all fragments from start to end time will be available immediately. The effect is this will 
-        read in bytes as fast as the system resources (KVS limits, CPU and bandwidth) will allow until the stream has 
+        bytes from the media stream will be available as fast as they arrive into Kinesis Video by the producer. In this case the
+        consumer bandwidth and fragment rate will be equal to that of the producer. However, if StartSelector is set to sometime
+        in the past then all fragments from start to end time will be available immediately. The effect is this will
+        read in bytes as fast as the system resources (KVS limits, CPU and bandwidth) will allow until the stream has
         caught up with the leading edge of media being generated.
 
         '''
 
+        kvs_streaming_buffer = None
         try:
             # Get the steam botocore.response.Streamingody object from the provided GetMedia response
-            kvs_streaming_buffer=self.get_media_response_object['Payload']
+            kvs_streaming_buffer = self.get_media_response_object['Payload']
 
             #########################################
             # Iterate through reading and parsing streaming body response of KVS GET Media API call to MKV fragments.
@@ -173,7 +174,7 @@ class KvsConsumerLibrary(Thread):
                 fragement_intrum_dom = self.schema.loads(chunk_buffer)
 
                 #############################################
-                #  Process a complete fragment if its arrived and send to the on_fragment_arrived callback. 
+                #  Process a complete fragment if its arrived and send to the on_fragment_arrived callback.
                 #############################################
                 # EBML header elements indicate the start of a new fragment. Here we check if the start of a second fragment
                 # has arrived and use its start to identify the byte boundary of the first complete fragment to process.
@@ -183,8 +184,8 @@ class KvsConsumerLibrary(Thread):
                 if (len(ebml_header_elements) > 1):
                     
                     # Get the offset for the first and second fragments. First fragment offset should be zero or fragment boundary is out of sync!
-                    first_ebml_header_offset = ebml_header_elements[0].offset 
-                    second_ebml_header_offset = ebml_header_elements[1].offset 
+                    first_ebml_header_offset = ebml_header_elements[0].offset
+                    second_ebml_header_offset = ebml_header_elements[1].offset
 
                     # Isolate the bytes from the first complete MKV fragments in the received chunk data
                     fragment_bytes = chunk_buffer[first_ebml_header_offset : second_ebml_header_offset]
@@ -192,19 +193,19 @@ class KvsConsumerLibrary(Thread):
                     # Parse the complete fragment as EBML to a DOM like object
                     fragment_dom = self.schema.loads(fragment_bytes)
 
-                    # Calculate duration taken receiving this fragment - just for telemetry of the steaming data. 
+                    # Calculate duration taken receiving this fragment - just for telemetry of the steaming data.
                     fragment_receive_duration = timeit.default_timer() - fragment_read_start_time
                     
                     # Forward fragment to the on_fragment_arrived callback.
-                    self.on_fragment_arrived_callback(self.stream_name, 
-                                                      fragment_bytes, 
-                                                      fragment_dom, 
+                    self.on_fragment_arrived_callback(self.stream_name,
+                                                      fragment_bytes,
+                                                      fragment_dom,
                                                       fragment_receive_duration)
 
                     # Remove the processed MKV segment from the raw byte chunk_buffer
                     chunk_buffer = chunk_buffer[second_ebml_header_offset: ]
 
-                    # Reset the chunk read count. 
+                    # Reset the chunk read count.
                     chunk_read_count = 0
 
                     # Reset the start time for the next segment iteration just to time fragment durations
@@ -224,4 +225,16 @@ class KvsConsumerLibrary(Thread):
             # Pass any exceptions to exception callback.
             self.on_read_stream_exception(self.stream_name, err)
         
+        finally:
+            # CRITICAL: Always close the StreamingBody to release the HTTP connection back to the connection pool.
+            # This prevents connection leaks that can cause ConnectionLimitExceededException when KVS enforces
+            # the 3-connection-per-stream limit. Without this, connections remain open until TCP timeout.
+            if kvs_streaming_buffer is not None:
+                try:
+                    kvs_streaming_buffer.close()
+                    log.info(f'Closed KVS streaming connection for stream: {self.stream_name}')
+                except Exception as close_err:
+                    # Log but don't raise - we're in cleanup and don't want to mask the original exception
+                    log.warning(f'Error closing streaming body for stream {self.stream_name}: {close_err}')
+
 

@@ -15,6 +15,7 @@ import sys
 import time
 import boto3
 import logging
+from botocore.exceptions import ClientError
 from amazon_kinesis_video_consumer_library.kinesis_video_streams_parser import KvsConsumerLibrary
 from amazon_kinesis_video_consumer_library.kinesis_video_fragment_processor import KvsFragementProcessor
 
@@ -62,35 +63,95 @@ class KvsPythonConsumerExample:
         
         ####################################################
         # Start an instance of the KvsConsumerLibrary reading in a Kinesis Video Stream
+        # with proper exception handling for connection creation
 
-        # Get the KVS Endpoint for the GetMedia Call for this stream
-        log.info(f'Getting KVS GetMedia Endpoint for stream: {KVS_STREAM01_NAME} ........') 
-        get_media_endpoint = self._get_data_endpoint(KVS_STREAM01_NAME, 'GET_MEDIA')
+        # Configuration for retry logic
+        max_retries = 3
+        base_retry_delay = 5  # seconds
         
-        # Get the KVS Media client for the GetMedia API call
-        log.info(f'Initializing KVS Media client for stream: {KVS_STREAM01_NAME}........') 
-        kvs_media_client = self.session.client('kinesis-video-media', endpoint_url=get_media_endpoint)
+        my_stream01_consumer = None
+        
+        for attempt in range(max_retries):
+            try:
+                # Get the KVS Endpoint for the GetMedia Call for this stream
+                log.info(f'Getting KVS GetMedia Endpoint for stream: {KVS_STREAM01_NAME} (attempt {attempt + 1}/{max_retries})........')
+                get_media_endpoint = self._get_data_endpoint(KVS_STREAM01_NAME, 'GET_MEDIA')
+                
+                # Get the KVS Media client for the GetMedia API call
+                log.info(f'Initializing KVS Media client for stream: {KVS_STREAM01_NAME}........')
+                kvs_media_client = self.session.client('kinesis-video-media', endpoint_url=get_media_endpoint)
 
-        # Make a KVS GetMedia API call with the desired KVS stream and StartSelector type and time bounding.
-        log.info(f'Requesting KVS GetMedia Response for stream: {KVS_STREAM01_NAME}........') 
-        get_media_response = kvs_media_client.get_media(
-            StreamName=KVS_STREAM01_NAME,
-            StartSelector={
-                'StartSelectorType': 'NOW'
-            }
-        )
+                # Make a KVS GetMedia API call with the desired KVS stream and StartSelector type and time bounding.
+                # This is where ConnectionLimitExceededException typically occurs
+                log.info(f'Requesting KVS GetMedia Response for stream: {KVS_STREAM01_NAME}........')
+                get_media_response = kvs_media_client.get_media(
+                    StreamName=KVS_STREAM01_NAME,
+                    StartSelector={
+                        'StartSelectorType': 'NOW'
+                    }
+                )
 
-        # Initialize an instance of the KvsConsumerLibrary, provide the GetMedia response and the required call-backs
-        log.info(f'Starting KvsConsumerLibrary for stream: {KVS_STREAM01_NAME}........') 
-        my_stream01_consumer = KvsConsumerLibrary(KVS_STREAM01_NAME, 
-                                              get_media_response, 
-                                              self.on_fragment_arrived, 
-                                              self.on_stream_read_complete, 
-                                              self.on_stream_read_exception
-                                            )
+                # Initialize an instance of the KvsConsumerLibrary, provide the GetMedia response and the required call-backs
+                log.info(f'Starting KvsConsumerLibrary for stream: {KVS_STREAM01_NAME}........')
+                my_stream01_consumer = KvsConsumerLibrary(KVS_STREAM01_NAME,
+                                                      get_media_response,
+                                                      self.on_fragment_arrived,
+                                                      self.on_stream_read_complete,
+                                                      self.on_stream_read_exception
+                                                    )
 
-        # Start the instance of KvsConsumerLibrary, any matching fragments will begin arriving in the on_fragment_arrived callback
-        my_stream01_consumer.start()
+                # Start the instance of KvsConsumerLibrary, any matching fragments will begin arriving in the on_fragment_arrived callback
+                my_stream01_consumer.start()
+                
+                # Success! Break out of retry loop
+                log.info(f'Successfully started KvsConsumerLibrary for stream: {KVS_STREAM01_NAME}')
+                break
+                
+            except ClientError as e:
+                error_code = e.response['Error']['Code']
+                error_message = e.response['Error']['Message']
+                
+                if error_code == 'ConnectionLimitExceededException':
+                    log.warning(f'Connection limit exceeded for stream {KVS_STREAM01_NAME} (attempt {attempt + 1}/{max_retries}): {error_message}')
+                    
+                    if attempt < max_retries - 1:
+                        # Calculate exponential backoff delay
+                        retry_delay = base_retry_delay * (2 ** attempt)
+                        log.info(f'Retrying in {retry_delay} seconds...')
+                        time.sleep(retry_delay)
+                    else:
+                        log.error(f'Max retries ({max_retries}) reached for ConnectionLimitExceededException. Giving up.')
+                        log.error('Possible solutions: 1) Close other connections to this stream, 2) Increase connection limit, 3) Try again later')
+                        raise
+                        
+                elif error_code == 'ResourceNotFoundException':
+                    log.error(f'Stream {KVS_STREAM01_NAME} not found in region {REGION}')
+                    log.error('Please verify the stream name and region are correct')
+                    raise
+                    
+                elif error_code == 'NotAuthorizedException':
+                    log.error(f'Not authorized to access stream {KVS_STREAM01_NAME}')
+                    log.error('Please verify your AWS credentials have the required KVS permissions')
+                    raise
+                    
+                else:
+                    log.error(f'Unexpected AWS error during stream creation: {error_code} - {error_message}')
+                    raise
+                    
+            except Exception as e:
+                log.error(f'Unexpected error during stream initialization (attempt {attempt + 1}/{max_retries}): {e}')
+                if attempt < max_retries - 1:
+                    retry_delay = base_retry_delay
+                    log.info(f'Retrying in {retry_delay} seconds...')
+                    time.sleep(retry_delay)
+                else:
+                    log.error('Max retries reached. Giving up.')
+                    raise
+        
+        # If we failed to create the consumer after all retries, exit
+        if my_stream01_consumer is None:
+            log.error('Failed to initialize KVS consumer. Exiting.')
+            return
 
         # Can create another instance of KvsConsumerLibrary on a different media stream or continue on to other application logic. 
 
@@ -101,14 +162,33 @@ class KvsPythonConsumerExample:
     
         # Run a loop with the applications main functionality that holds the process open.
         # Can also use to monitor the completion of the KvsConsumerLibrary instance and trigger a required action on completion.
-        while True:
+        try:
+            while True:
 
-            #Add Main process / application logic here while KvsConsumerLibrary instance runs as a thread
-            log.info("Nothn to see, just doin main application stuff in a loop here!")
-            time.sleep(5)
-            
-            # Call below to exit the streaming get_media() thread gracefully before reaching end of stream. 
-            #my_stream01_consumer.stop_thread()
+                #Add Main process / application logic here while KvsConsumerLibrary instance runs as a thread
+                log.info("Nothn to see, just doin main application stuff in a loop here!")
+                time.sleep(5)
+                
+                # Call below to exit the streaming get_media() thread gracefully before reaching end of stream.
+                #my_stream01_consumer.stop_thread()
+                
+        except KeyboardInterrupt:
+            log.info('Shutdown requested by user (Ctrl+C)')
+            if my_stream01_consumer and my_stream01_consumer.is_alive():
+                log.info('Stopping KVS consumer thread gracefully...')
+                my_stream01_consumer.stop_thread()
+                my_stream01_consumer.join(timeout=30)
+                if my_stream01_consumer.is_alive():
+                    log.warning('Consumer thread did not stop within timeout')
+                else:
+                    log.info('Consumer thread stopped successfully')
+        except Exception as e:
+            log.error(f'Unexpected error in main loop: {e}')
+            if my_stream01_consumer and my_stream01_consumer.is_alive():
+                log.info('Stopping KVS consumer thread due to error...')
+                my_stream01_consumer.stop_thread()
+                my_stream01_consumer.join(timeout=30)
+            raise
 
 
     ####################################################
