@@ -41,10 +41,11 @@ __status__ = "Development"
 __copyright__ = "Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved."
 __author__ = "Dean Colcott <https://www.linkedin.com/in/deancolcott/>"
 
+from io import BytesIO
 import timeit
 import logging
 from threading import Thread
-from amazon_kinesis_video_consumer_library.ebmlite import loadSchema
+from ebmlite import loadSchema
 
 # Init the logger.
 log = logging.getLogger(__name__)
@@ -170,7 +171,10 @@ class KvsConsumerLibrary(Thread):
                 #############################################
                 # Parse current byte buffer to MKV EBML DOM like object using EBMLite
                 #############################################
-                fragement_intrum_dom = self.schema.loads(chunk_buffer)
+                fragement_intrum_dom = self.schema.load(
+                    BytesIO(chunk_buffer),
+                    headers=True
+                )
 
                 #############################################
                 #  Process a complete fragment if its arrived and send to the on_fragment_arrived callback. 
@@ -190,7 +194,10 @@ class KvsConsumerLibrary(Thread):
                     fragment_bytes = chunk_buffer[first_ebml_header_offset : second_ebml_header_offset]
 
                     # Parse the complete fragment as EBML to a DOM like object
-                    fragment_dom = self.schema.loads(fragment_bytes)
+                    fragment_dom = self.schema.load(
+                        BytesIO(fragment_bytes),
+                        headers=True
+                    )
 
                     # Calculate duration taken receiving this fragment - just for telemetry of the steaming data. 
                     fragment_receive_duration = timeit.default_timer() - fragment_read_start_time
