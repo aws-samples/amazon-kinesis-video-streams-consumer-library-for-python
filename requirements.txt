@@ -1,4 +1,5 @@
 av~=17.1
 boto3~=1.43
+ebmlite~=3.4
 imageio~=2.37
 opencv-python~=4.13
